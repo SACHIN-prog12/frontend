@@ -1,697 +1,557 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Search, Plus, Edit2, Save, X, Users, Calendar, Phone, Clock, 
-  CheckCircle, XCircle, BarChart3, UserCheck, Trash2 
-} from 'lucide-react';
-import './gym.css';
 
-const Gym = () => {
-  const [members, setMembers] = useState([]);
-  const [attendance, setAttendance] = useState([]);
-  const [stats, setStats] = useState({});
-  const [activeTab, setActiveTab] = useState('members');
-  const [isAddingMember, setIsAddingMember] = useState(false);
-  const [editingMember, setEditingMember] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
+import React, { useState, useEffect } from 'react';
+import './gym.css'; // Assuming you have a CSS file for styling
+
+// Statistics Component
+const Statistics = ({ members }) => {
+  const total = members.length;
+  const paid = members.filter(m => m.feeStatus === 'paid').length;
+  const unpaid = members.filter(m => m.feeStatus === 'unpaid').length;
+
+  return (
+    <div className="stats">
+      <div className="stat-card">
+        <h3>{total}</h3>
+        <p>Total Members</p>
+      </div>
+      <div className="stat-card paid">
+        <h3>{paid}</h3>
+        <p>Paid Members</p>
+      </div>
+      <div className="stat-card unpaid">
+        <h3>{unpaid}</h3>
+        <p>Unpaid Members</p>
+      </div>
+    </div>
+  );
+};
+
+// Member Form Component
+const MemberForm = ({ onAddMember }) => {
   const [formData, setFormData] = useState({
     name: '',
-    whatsappNumber: '',
-    dateOfJoining: '',
-    membershipType: 'monthly'
+    whatsapp: '',
+    admissionDate: '',
+    membershipType: ''
   });
+  const [loading, setLoading] = useState(false);
 
-  // Load data from localStorage on component mount
-  useEffect(() => {
-    loadData();
-    calculateStats();
-    
-    // Set up interval to refresh stats every 30 seconds
-    const interval = setInterval(() => {
-      calculateStats();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [members, attendance]);
-
-  // Data Management Functions
-  const loadData = () => {
-    try {
-      const savedMembers = localStorage.getItem('gymMembers');
-      const savedAttendance = localStorage.getItem('gymAttendance');
-      
-      if (savedMembers) {
-        setMembers(JSON.parse(savedMembers));
-      }
-      if (savedAttendance) {
-        setAttendance(JSON.parse(savedAttendance));
-      }
-    } catch (error) {
-      console.error('Error loading data:', error);
-    }
-  };
-
-  const saveData = (newMembers = members, newAttendance = attendance) => {
-    try {
-      localStorage.setItem('gymMembers', JSON.stringify(newMembers));
-      localStorage.setItem('gymAttendance', JSON.stringify(newAttendance));
-    } catch (error) {
-      console.error('Error saving data:', error);
-    }
-  };
-
-  const calculateStats = () => {
-    const today = new Date().toDateString();
-    const todayAttendance = attendance.filter(att => 
-      new Date(att.checkInTime).toDateString() === today
-    );
-    
-    const activeCheckIns = todayAttendance.filter(att => !att.checkOutTime);
-    
-    const thisMonth = new Date();
-    const newMembersThisMonth = members.filter(member => {
-      const joinDate = new Date(member.dateOfJoining);
-      return joinDate.getMonth() === thisMonth.getMonth() && 
-             joinDate.getFullYear() === thisMonth.getFullYear();
-    });
-
-    setStats({
-      totalMembers: members.length,
-      todayAttendance: todayAttendance.length,
-      activeCheckIns: activeCheckIns.length,
-      newMembersThisMonth: newMembersThisMonth.length
-    });
-  };
-
-  const handleInputChange = (e) => {
+  const handleChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
   };
 
-  const validateForm = () => {
-    if (!formData.name.trim()) {
-      alert('Please enter member name');
-      return false;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.name || !formData.whatsapp || !formData.admissionDate || !formData.membershipType) {
+      alert('Please fill in all required fields');
+      return;
     }
-    if (!formData.whatsappNumber.trim()) {
-      alert('Please enter WhatsApp number');
-      return false;
+
+    setLoading(true);
+    const result = await onAddMember(formData);
+    
+    if (result.success) {
+      setFormData({
+        name: '',
+        whatsapp: '',
+        admissionDate: '',
+        membershipType: ''
+      });
+    } else {
+      alert('Failed to add member: ' + result.error);
     }
-    if (!formData.dateOfJoining) {
-      alert('Please select date of joining');
-      return false;
-    }
-    return true;
+    
+    setLoading(false);
   };
 
-  const addMember = async () => {
-    if (!validateForm()) return;
+  return (
+    <form onSubmit={handleSubmit} className="member-form">
+      <div className="form-section">
+        <div className="form-group">
+          <label htmlFor="name">Member Name *</label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            placeholder="Enter member name"
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="whatsapp">WhatsApp Number *</label>
+          <input
+            type="tel"
+            id="whatsapp"
+            name="whatsapp"
+            value={formData.whatsapp}
+            onChange={handleChange}
+            placeholder="Enter WhatsApp number"
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="admissionDate">Admission Date *</label>
+          <input
+            type="date"
+            id="admissionDate"
+            name="admissionDate"
+            value={formData.admissionDate}
+            onChange={handleChange}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label htmlFor="membershipType">Membership Type *</label>
+          <select
+            id="membershipType"
+            name="membershipType"
+            value={formData.membershipType}
+            onChange={handleChange}
+            required
+          >
+            <option value="">Select membership type</option>
+            <option value="Monthly">Monthly</option>
+            <option value="Quarterly">Quarterly (3 months)</option>
+            <option value="Half-Yearly">Half-Yearly (6 months)</option>
+            <option value="Yearly">Yearly</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <button type="submit" className="btn btn-primary" disabled={loading}>
+            {loading ? 'Adding...' : 'Add Member'}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+};
+
+// Search Filter Component
+const SearchFilter = ({ 
+  searchTerm, 
+  setSearchTerm, 
+  statusFilter, 
+  setStatusFilter, 
+  onClearFilters 
+}) => {
+  return (
+    <div className="search-filter">
+      <input
+        type="text"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        placeholder="🔍 Search members by name or WhatsApp..."
+      />
+      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <option value="">All Members</option>
+        <option value="paid">Paid Only</option>
+        <option value="unpaid">Unpaid Only</option>
+      </select>
+      <button type="button" className="btn btn-secondary" onClick={onClearFilters}>
+        Clear Filters
+      </button>
+    </div>
+  );
+};
+
+// Member Card Component
+const MemberCard = ({ member, onEdit, onDelete, onUpdateFeeStatus }) => {
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-GB');
+  };
+
+  const handleFeeStatusChange = (e) => {
+    onUpdateFeeStatus(member.id, e.target.value);
+  };
+
+  return (
+    <div className={`member-card ${member.feeStatus}`}>
+      <div className="member-info">
+        <h3>{member.name}</h3>
+        <div className="member-detail">
+          <span><strong>WhatsApp:</strong></span>
+          <span>{member.whatsapp}</span>
+        </div>
+        <div className="member-detail">
+          <span><strong>Admission Date:</strong></span>
+          <span>{formatDate(member.admissionDate)}</span>
+        </div>
+        <div className="member-detail">
+          <span><strong>Membership:</strong></span>
+          <span>{member.membershipType}</span>
+        </div>
+        {member.nextPaymentDue && (
+          <div className="member-detail">
+            <span><strong>Next Payment Due:</strong></span>
+            <span>{formatDate(member.nextPaymentDue)}</span>
+          </div>
+        )}
+      </div>
+      <div className="fee-status">
+        <span className={`status-badge status-${member.feeStatus}`}>
+          {member.feeStatus.toUpperCase()}
+        </span>
+        <select 
+          value={member.feeStatus} 
+          onChange={handleFeeStatusChange}
+          className="fee-status-select"
+        >
+          <option value="paid">Paid</option>
+          <option value="unpaid">Unpaid</option>
+        </select>
+      </div>
+      <div className="member-actions">
+        <button className="btn btn-primary" onClick={() => onEdit(member)}>
+          Edit
+        </button>
+        <button className="btn btn-danger" onClick={() => onDelete(member.id)}>
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Member List Component
+const MemberList = ({ members, onEditMember, onDeleteMember, onUpdateFeeStatus }) => {
+  if (members.length === 0) {
+    return (
+      <div className="no-members">
+        <p>No members found</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="members-grid">
+      {members.map(member => (
+        <MemberCard
+          key={member.id}
+          member={member}
+          onEdit={onEditMember}
+          onDelete={onDeleteMember}
+          onUpdateFeeStatus={onUpdateFeeStatus}
+        />
+      ))}
+    </div>
+  );
+};
+
+// Edit Modal Component
+const EditModal = ({ member, onUpdateMember, onClose }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    whatsapp: '',
+    admissionDate: '',
+    membershipType: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (member) {
+      setFormData({
+        name: member.name,
+        whatsapp: member.whatsapp,
+        admissionDate: member.admissionDate,
+        membershipType: member.membershipType
+      });
+    }
+  }, [member]);
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
+    if (!formData.name || !formData.whatsapp || !formData.admissionDate || !formData.membershipType) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
     setLoading(true);
+    const result = await onUpdateMember(member.id, formData);
+    
+    if (result.success) {
+      onClose();
+    } else {
+      alert('Failed to update member: ' + result.error);
+    }
+    
+    setLoading(false);
+  };
+
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  return (
+    <div className="modal" onClick={handleOverlayClick}>
+      <div className="modal-content">
+        <span className="close" onClick={onClose}>&times;</span>
+        <h2>Edit Member</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-section">
+            <div className="form-group">
+              <label htmlFor="editName">Member Name *</label>
+              <input
+                type="text"
+                id="editName"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="editWhatsapp">WhatsApp Number *</label>
+              <input
+                type="tel"
+                id="editWhatsapp"
+                name="whatsapp"
+                value={formData.whatsapp}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="editAdmissionDate">Admission Date *</label>
+              <input
+                type="date"
+                id="editAdmissionDate"
+                name="admissionDate"
+                value={formData.admissionDate}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="editMembershipType">Membership Type *</label>
+              <select
+                id="editMembershipType"
+                name="membershipType"
+                value={formData.membershipType}
+                onChange={handleChange}
+                required
+              >
+                <option value="Monthly">Monthly</option>
+                <option value="Quarterly">Quarterly (3 months)</option>
+                <option value="Half-Yearly">Half-Yearly (6 months)</option>
+                <option value="Yearly">Yearly</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <button type="submit" className="btn btn-success" disabled={loading}>
+                {loading ? 'Updating...' : 'Update Member'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Main App Component
+const Gym = () => {
+  const [members, setMembers] = useState([]);
+  const [filteredMembers, setFilteredMembers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [editingMember, setEditingMember] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Calculate next payment due date
+  const calculateNextPaymentDue = (admissionDate, membershipType) => {
+    const date = new Date(admissionDate);
+    switch (membershipType) {
+      case 'Monthly':
+        date.setMonth(date.getMonth() + 1);
+        break;
+      case 'Quarterly':
+        date.setMonth(date.getMonth() + 3);
+        break;
+      case 'Half-Yearly':
+        date.setMonth(date.getMonth() + 6);
+        break;
+      case 'Yearly':
+        date.setFullYear(date.getFullYear() + 1);
+        break;
+      default:
+        date.setMonth(date.getMonth() + 1);
+    }
+    return date.toISOString().split('T')[0];
+  };
+
+  // Auto-update fee status based on payment due date
+  const updateFeeStatuses = () => {
+    const today = new Date().toISOString().split('T')[0];
+    setMembers(prev => prev.map(member => {
+      if (member.nextPaymentDue && member.nextPaymentDue < today && member.feeStatus === 'paid') {
+        return { ...member, feeStatus: 'unpaid' };
+      }
+      return member;
+    }));
+  };
+
+  // Load initial data and set up auto-update
+  useEffect(() => {
+    // Load sample data
+    const sampleMembers = [
+      {
+        id: 1,
+        name: 'John Doe',
+        whatsapp: '+91 9876543210',
+        admissionDate: '2024-01-15',
+        membershipType: 'Monthly',
+        feeStatus: 'paid',
+        nextPaymentDue: calculateNextPaymentDue('2024-01-15', 'Monthly')
+      },
+      {
+        id: 2,
+        name: 'Jane Smith',
+        whatsapp: '+91 9876543211',
+        admissionDate: '2024-02-01',
+        membershipType: 'Quarterly',
+        feeStatus: 'unpaid',
+        nextPaymentDue: calculateNextPaymentDue('2024-02-01', 'Quarterly')
+      }
+    ];
+    
+    setMembers(sampleMembers);
+    
+    // Set up interval to check fee statuses
+    const interval = setInterval(updateFeeStatuses, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, []);
+
+  // Filter members based on search and status
+  useEffect(() => {
+    const filtered = members.filter(member => {
+      const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            member.whatsapp.includes(searchTerm);
+      const matchesStatus = !statusFilter || member.feeStatus === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+    setFilteredMembers(filtered);
+  }, [members, searchTerm, statusFilter]);
+
+  // Add new member
+  const addMember = async (memberData) => {
     try {
       const newMember = {
-        _id: Date.now().toString(),
-        ...formData,
-        createdAt: new Date().toISOString()
+        id: Date.now(), // Simple ID generation
+        ...memberData,
+        feeStatus: 'paid', // New members start as paid
+        nextPaymentDue: calculateNextPaymentDue(memberData.admissionDate, memberData.membershipType)
       };
-
-      const updatedMembers = [...members, newMember];
-      setMembers(updatedMembers);
-      saveData(updatedMembers, attendance);
       
-      resetForm();
-      setIsAddingMember(false);
-      alert('Member added successfully!');
-    } catch (error) {
-      console.error('Error adding member:', error);
-      alert('Error adding member');
-    } finally {
-      setLoading(false);
+      setMembers(prev => [...prev, newMember]);
+      return { success: true };
+    } catch (err) {
+      setError('Failed to add member: ' + err.message);
+      return { success: false, error: err.message };
     }
   };
 
-  const updateMember = async () => {
-    if (!validateForm()) return;
-    
-    setLoading(true);
+  // Update member
+  const updateMember = async (id, memberData) => {
     try {
-      const updatedMembers = members.map(member =>
-        member._id === editingMember._id
-          ? { ...member, ...formData }
-          : member
-      );
+      const updatedMember = {
+        ...memberData,
+        id,
+        nextPaymentDue: calculateNextPaymentDue(memberData.admissionDate, memberData.membershipType)
+      };
       
-      setMembers(updatedMembers);
-      saveData(updatedMembers, attendance);
-      
-      resetForm();
+      setMembers(prev => prev.map(m => m.id === id ? { ...m, ...updatedMember } : m));
       setEditingMember(null);
-      alert('Member updated successfully!');
-    } catch (error) {
-      console.error('Error updating member:', error);
-      alert('Error updating member');
-    } finally {
-      setLoading(false);
+      return { success: true };
+    } catch (err) {
+      setError('Failed to update member: ' + err.message);
+      return { success: false, error: err.message };
     }
   };
 
+  // Delete member
   const deleteMember = async (id) => {
     if (!window.confirm('Are you sure you want to delete this member?')) return;
     
     try {
-      const updatedMembers = members.filter(member => member._id !== id);
-      const updatedAttendance = attendance.filter(att => att.memberId !== id);
-      
-      setMembers(updatedMembers);
-      setAttendance(updatedAttendance);
-      saveData(updatedMembers, updatedAttendance);
-      
-      alert('Member deleted successfully!');
-    } catch (error) {
-      console.error('Error deleting member:', error);
-      alert('Error deleting member');
+      setMembers(prev => prev.filter(m => m.id !== id));
+    } catch (err) {
+      setError('Failed to delete member: ' + err.message);
     }
   };
 
-  const markAttendance = async (memberId, memberName) => {
+  // Update fee status
+  const updateFeeStatus = async (id, newStatus) => {
     try {
-      const today = new Date().toDateString();
-      const existingAttendance = attendance.find(att => 
-        att.memberId === memberId && 
-        new Date(att.checkInTime).toDateString() === today
-      );
-
-      if (existingAttendance) {
-        alert('Attendance already marked for today');
-        return;
-      }
-
-      const newAttendance = {
-        _id: Date.now().toString(),
-        memberId: memberId,
-        memberName: memberName,
-        checkInTime: new Date().toISOString(),
-        checkOutTime: null
-      };
-
-      const updatedAttendance = [...attendance, newAttendance];
-      setAttendance(updatedAttendance);
-      saveData(members, updatedAttendance);
-      
-      alert(`Attendance marked for ${memberName} successfully!`);
-    } catch (error) {
-      console.error('Error marking attendance:', error);
-      alert('Error marking attendance');
+      setMembers(prev => prev.map(m => 
+        m.id === id ? { ...m, feeStatus: newStatus } : m
+      ));
+    } catch (err) {
+      setError('Failed to update fee status: ' + err.message);
     }
   };
 
-  const markCheckout = async (memberId, memberName) => {
-    try {
-      const today = new Date().toDateString();
-      const updatedAttendance = attendance.map(att => {
-        if (att.memberId === memberId && 
-            new Date(att.checkInTime).toDateString() === today && 
-            !att.checkOutTime) {
-          return { ...att, checkOutTime: new Date().toISOString() };
-        }
-        return att;
-      });
-
-      setAttendance(updatedAttendance);
-      saveData(members, updatedAttendance);
-      
-      alert(`${memberName} checked out successfully!`);
-    } catch (error) {
-      console.error('Error during checkout:', error);
-      alert('Error during checkout');
-    }
+  // Clear filters
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('');
   };
 
-  const startEdit = (member) => {
-    setEditingMember(member);
-    setFormData({
-      name: member.name,
-      whatsappNumber: member.whatsappNumber,
-      dateOfJoining: new Date(member.dateOfJoining).toISOString().split('T')[0],
-      membershipType: member.membershipType
-    });
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      whatsappNumber: '',
-      dateOfJoining: '',
-      membershipType: 'monthly'
-    });
-  };
-
-  const cancelEdit = () => {
-    setEditingMember(null);
-    setIsAddingMember(false);
-    resetForm();
-  };
-
-  const filteredMembers = members.filter(member =>
-    member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    member.whatsappNumber.includes(searchTerm)
+if (loading) {
+  return (
+    <div className="loading-container">
+      <div className="loading-spinner"></div>
+      <p>Loading members...</p>
+    </div>
   );
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const formatTime = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getAttendanceStatus = (memberId) => {
-    const today = new Date().toDateString();
-    const todayAttendance = attendance.find(att => 
-      att.memberId === memberId && 
-      new Date(att.checkInTime).toDateString() === today
-    );
-    
-    if (!todayAttendance) return 'absent';
-    if (todayAttendance.checkOutTime) return 'completed';
-    return 'present';
-  };
-
-  const getTodayAttendance = () => {
-    const today = new Date().toDateString();
-    return attendance.filter(att => 
-      new Date(att.checkInTime).toDateString() === today
-    ).map(att => ({
-      ...att,
-      memberData: members.find(m => m._id === att.memberId)
-    }));
-  };
+}
 
   return (
-    <div className="gym-app">
-      <div className="container">
-        {/* Header */}
-        <div className="header-card">
-          <div className="header-content">
-            <div className="header-left">
-              <div className="header-icon">
-                <Users size={24} />
-              </div>
-              <div className="header-text">
-                <h1>Gym Management System</h1>
-                <p>Manage members and track daily attendance</p>
-              </div>
-            </div>
-            <div className="header-right">
-              <p className="date-label">Today's Date</p>
-              <p className="current-date">
-                {new Date().toLocaleDateString('en-IN', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </p>
-            </div>
-          </div>
-        </div>
+    <div className="gym-container">
+      <h1>Gym Member Management</h1>
 
-        {/* Stats Cards */}
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-content">
-              <div className="stat-icon blue">
-                <Users size={24} />
-              </div>
-              <div className="stat-info">
-                <p className="stat-label">Total Members</p>
-                <p className="stat-value">{stats.totalMembers || 0}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="stat-card">
-            <div className="stat-content">
-              <div className="stat-icon green">
-                <CheckCircle size={24} />
-              </div>
-              <div className="stat-info">
-                <p className="stat-label">Today's Attendance</p>
-                <p className="stat-value">{stats.todayAttendance || 0}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="stat-card">
-            <div className="stat-content">
-              <div className="stat-icon yellow">
-                <Clock size={24} />
-              </div>
-              <div className="stat-info">
-                <p className="stat-label">Active Check-ins</p>
-                <p className="stat-value">{stats.activeCheckIns || 0}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="stat-card">
-            <div className="stat-content">
-              <div className="stat-icon purple">
-                <UserCheck size={24} />
-              </div>
-              <div className="stat-info">
-                <p className="stat-label">New This Month</p>
-                <p className="stat-value">{stats.newMembersThisMonth || 0}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+      <Statistics members={members} />
 
-        {/* Tab Navigation */}
-        <div className="tab-navigation">
-          <div className="tab-buttons">
-            <button
-              onClick={() => setActiveTab('members')}
-              className={`tab-button ${activeTab === 'members' ? 'active' : ''}`}
-            >
-              <Users size={20} />
-              Members
-            </button>
-            <button
-              onClick={() => setActiveTab('attendance')}
-              className={`tab-button ${activeTab === 'attendance' ? 'active' : ''}`}
-            >
-              <Calendar size={20} />
-              Today's Attendance
-            </button>
-          </div>
-        </div>
+      <SearchFilter 
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        onClearFilters={clearFilters}
+      />
 
-        {/* Members Tab */}
-        {activeTab === 'members' && (
-          <>
-            {/* Search and Add Section */}
-            <div className="search-add-section">
-              <div className="search-container">
-                <div className="search-input-wrapper">
-                  <Search className="search-icon" size={20} />
-                  <input
-                    type="text"
-                    placeholder="Search by name or phone number..."
-                    className="search-input"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                <button
-                  onClick={() => setIsAddingMember(true)}
-                  className="add-button"
-                >
-                  <Plus size={20} />
-                  Add Member
-                </button>
-              </div>
-            </div>
+      <MemberForm onAddMember={addMember} />
 
-            {/* Add/Edit Form */}
-            {(isAddingMember || editingMember) && (
-              <div className="form-section">
-                <h2 className="form-title">
-                  {editingMember ? 'Edit Member' : 'Add New Member'}
-                </h2>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label className="form-label">Full Name *</label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      className="form-input"
-                      placeholder="Enter full name"
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">WhatsApp Number *</label>
-                    <input
-                      type="text"
-                      name="whatsappNumber"
-                      value={formData.whatsappNumber}
-                      onChange={handleInputChange}
-                      className="form-input"
-                      placeholder="+91 9876543210"
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Date of Joining *</label>
-                    <input
-                      type="date"
-                      name="dateOfJoining"
-                      value={formData.dateOfJoining}
-                      onChange={handleInputChange}
-                      className="form-input"
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Membership Type</label>
-                    <select
-                      name="membershipType"
-                      value={formData.membershipType}
-                      onChange={handleInputChange}
-                      className="form-select"
-                    >
-                      <option value="monthly">Monthly</option>
-                      <option value="quarterly">Quarterly</option>
-                      <option value="yearly">Yearly</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="form-actions">
-                  <button
-                    onClick={editingMember ? updateMember : addMember}
-                    disabled={loading}
-                    className="save-button"
-                  >
-                    <Save size={20} />
-                    {loading ? 'Saving...' : editingMember ? 'Update Member' : 'Add Member'}
-                  </button>
-                  <button
-                    onClick={cancelEdit}
-                    className="cancel-button"
-                  >
-                    <X size={20} />
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
+      <MemberList 
+        members={filteredMembers}
+        onEditMember={setEditingMember}
+        onDeleteMember={deleteMember}
+        onUpdateFeeStatus={updateFeeStatus}
+      />
 
-            {/* Members List */}
-            <div className="table-section">
-              <div className="table-header">
-                <h2>Members List ({filteredMembers.length})</h2>
-              </div>
-              <div className="table-container">
-                <table className="members-table">
-                  <thead>
-                    <tr>
-                      <th>Member Details</th>
-                      <th>Contact</th>
-                      <th>Membership</th>
-                      <th>Today's Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMembers.map((member) => {
-                      const attendanceStatus = getAttendanceStatus(member._id);
-                      return (
-                        <tr key={member._id}>
-                          <td>
-                            <div className="member-info">
-                              <div className="member-avatar">
-                                <Users size={20} />
-                              </div>
-                              <div className="member-details">
-                                <div className="member-name">{member.name}</div>
-                                <div className="member-joined">
-                                  Joined: {formatDate(member.dateOfJoining)}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <div className="contact-info">
-                              <Phone size={16} />
-                              {member.whatsappNumber}
-                            </div>
-                          </td>
-                          <td>
-                            <span className={`membership-badge ${member.membershipType}`}>
-                              {member.membershipType.charAt(0).toUpperCase() + member.membershipType.slice(1)}
-                            </span>
-                          </td>
-                          <td>
-                            <div className={`status-indicator ${attendanceStatus}`}>
-                              {attendanceStatus === 'present' && (
-                                <>
-                                  <CheckCircle size={20} />
-                                  <span>Present</span>
-                                </>
-                              )}
-                              {attendanceStatus === 'completed' && (
-                                <>
-                                  <Clock size={20} />
-                                  <span>Completed</span>
-                                </>
-                              )}
-                              {attendanceStatus === 'absent' && (
-                                <>
-                                  <XCircle size={20} />
-                                  <span>Absent</span>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                          <td>
-                            <div className="action-buttons">
-                              {attendanceStatus === 'absent' && (
-                                <button
-                                  onClick={() => markAttendance(member._id, member.name)}
-                                  className="action-btn present"
-                                >
-                                  <CheckCircle size={16} />
-                                  Mark Present
-                                </button>
-                              )}
-                              {attendanceStatus === 'present' && (
-                                <button
-                                  onClick={() => markCheckout(member._id, member.name)}
-                                  className="action-btn checkout"
-                                >
-                                  <Clock size={16} />
-                                  Check Out
-                                </button>
-                              )}
-                              <button
-                                onClick={() => startEdit(member)}
-                                className="action-btn edit"
-                              >
-                                <Edit2 size={16} />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => deleteMember(member._id)}
-                                className="action-btn delete"
-                              >
-                                <Trash2 size={16} />
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {filteredMembers.length === 0 && (
-                  <div className="empty-state">
-                    <Users size={48} />
-                    <p>No members found</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Attendance Tab */}
-        {activeTab === 'attendance' && (
-          <div className="table-section">
-            <div className="table-header">
-              <h2>Today's Attendance ({getTodayAttendance().length} members checked in)</h2>
-            </div>
-            <div className="table-container">
-              <table className="attendance-table">
-                <thead>
-                  <tr>
-                    <th>Member</th>
-                    <th>Check-in Time</th>
-                    <th>Check-out Time</th>
-                    <th>Duration</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {getTodayAttendance().map((att) => {
-                    const duration = att.checkOutTime 
-                      ? Math.round((new Date(att.checkOutTime) - new Date(att.checkInTime)) / (1000 * 60))
-                      : Math.round((new Date() - new Date(att.checkInTime)) / (1000 * 60));
-                    
-                    return (
-                      <tr key={att._id}>
-                        <td>
-                          <div className="member-info">
-                            <div className="member-avatar">
-                              <Users size={20} />
-                            </div>
-                            <div className="member-details">
-                              <div className="member-name">{att.memberData?.name || att.memberName}</div>
-                              <div className="member-phone">{att.memberData?.whatsappNumber}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td>{formatTime(att.checkInTime)}</td>
-                        <td>{att.checkOutTime ? formatTime(att.checkOutTime) : '-'}</td>
-                        <td>
-                          {duration < 60 ? `${duration} min` : `${Math.floor(duration / 60)}h ${duration % 60}m`}
-                        </td>
-                        <td>
-                          {att.checkOutTime ? (
-                            <span className="status-badge completed">Completed</span>
-                          ) : (
-                            <span className="status-badge active">Active</span>
-                          )}
-                        </td>
-                        <td>
-                          {!att.checkOutTime && (
-                            <button
-                              onClick={() => markCheckout(att.memberId, att.memberData?.name || att.memberName)}
-                              className="action-btn checkout"
-                            >
-                              <Clock size={16} />
-                              Check Out
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {getTodayAttendance().length === 0 && (
-                <div className="empty-state">
-                  <Calendar size={48} />
-                  <p>No attendance records for today</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      {editingMember && (
+        <EditModal 
+          member={editingMember}
+          onUpdateMember={updateMember}
+          onClose={() => setEditingMember(null)}
+        />
+      )}
     </div>
   );
 };
