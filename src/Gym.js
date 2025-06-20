@@ -1,33 +1,136 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import './gym.css';
 
-import React, { useState, useEffect } from 'react';
-import './gym.css'; // Assuming you have a CSS file for styling
+// API Configuration
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-// Statistics Component
-const Statistics = ({ members }) => {
-  const total = members.length;
-  const paid = members.filter(m => m.feeStatus === 'paid').length;
-  const unpaid = members.filter(m => m.feeStatus === 'unpaid').length;
+// API Service with better error handling
+const apiService = {
+  handleResponse: async (response) => {
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Network error' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  getMembers: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const response = await fetch(`${API_BASE_URL}/members?${queryString}`);
+    return apiService.handleResponse(response);
+  },
+
+  createMember: async (memberData) => {
+    const response = await fetch(`${API_BASE_URL}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(memberData)
+    });
+    return apiService.handleResponse(response);
+  },
+
+  updateMember: async (id, memberData) => {
+    const response = await fetch(`${API_BASE_URL}/members/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(memberData)
+    });
+    return apiService.handleResponse(response);
+  },
+
+  deleteMember: async (id) => {
+    const response = await fetch(`${API_BASE_URL}/members/${id}`, {
+      method: 'DELETE'
+    });
+    return apiService.handleResponse(response);
+  },
+
+  updateFeeStatus: async (id, feeStatus) => {
+    const response = await fetch(`${API_BASE_URL}/members/${id}/fee-status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feeStatus })
+    });
+    return apiService.handleResponse(response);
+  },
+
+  updateOverdueMembers: async () => {
+    const response = await fetch(`${API_BASE_URL}/update-overdue`, {
+      method: 'POST'
+    });
+    return apiService.handleResponse(response);
+  },
+
+  getStats: async () => {
+    const response = await fetch(`${API_BASE_URL}/stats`);
+    return apiService.handleResponse(response);
+  }
+};
+
+// Toast notification component
+const Toast = ({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
 
   return (
-    <div className="stats">
-      <div className="stat-card">
-        <h3>{total}</h3>
-        <p>Total Members</p>
+    <div className={`toast toast-${type}`}>
+      <span>{message}</span>
+      <button onClick={onClose} className="toast-close">×</button>
+    </div>
+  );
+};
+
+// Statistics Component
+const Statistics = ({ stats, loading }) => {
+  if (loading) {
+    return (
+      <div className="statistics loading">
+        <div className="stat-card skeleton"></div>
+        <div className="stat-card skeleton"></div>
+        <div className="stat-card skeleton"></div>
+        <div className="stat-card skeleton"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="statistics">
+      <div className="stat-card total">
+        <div className="stat-icon">👥</div>
+        <div className="stat-content">
+          <h3>{stats.totalMembers || 0}</h3>
+          <p>Total Members</p>
+        </div>
       </div>
       <div className="stat-card paid">
-        <h3>{paid}</h3>
-        <p>Paid Members</p>
+        <div className="stat-icon">✅</div>
+        <div className="stat-content">
+          <h3>{stats.paidMembers || 0}</h3>
+          <p>Paid Members</p>
+        </div>
       </div>
       <div className="stat-card unpaid">
-        <h3>{unpaid}</h3>
-        <p>Unpaid Members</p>
+        <div className="stat-icon">❌</div>
+        <div className="stat-content">
+          <h3>{stats.unpaidMembers || 0}</h3>
+          <p>Unpaid Members</p>
+        </div>
+      </div>
+      <div className="stat-card overdue">
+        <div className="stat-icon">⏰</div>
+        <div className="stat-content">
+          <h3>{stats.overdueMembers || 0}</h3>
+          <p>Overdue Members</p>
+        </div>
       </div>
     </div>
   );
 };
 
 // Member Form Component
-const MemberForm = ({ onAddMember }) => {
+const MemberForm = ({ onRefresh, onShowToast }) => {
   const [formData, setFormData] = useState({
     name: '',
     whatsapp: '',
@@ -35,100 +138,125 @@ const MemberForm = ({ onAddMember }) => {
     membershipType: ''
   });
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.name.trim()) newErrors.name = 'Name is required';
+    if (!formData.whatsapp.trim()) newErrors.whatsapp = 'WhatsApp number is required';
+    if (!formData.admissionDate) newErrors.admissionDate = 'Admission date is required';
+    if (!formData.membershipType) newErrors.membershipType = 'Membership type is required';
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.whatsapp || !formData.admissionDate || !formData.membershipType) {
-      alert('Please fill in all required fields');
-      return;
-    }
+    if (!validateForm()) return;
 
     setLoading(true);
-    const result = await onAddMember(formData);
-    
-    if (result.success) {
+    try {
+      await apiService.createMember(formData);
       setFormData({
         name: '',
         whatsapp: '',
         admissionDate: '',
         membershipType: ''
       });
-    } else {
-      alert('Failed to add member: ' + result.error);
+      onRefresh();
+      onShowToast('Member added successfully!', 'success');
+    } catch (error) {
+      onShowToast(`Failed to add member: ${error.message}`, 'error');
     }
-    
     setLoading(false);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="member-form">
-      <div className="form-section">
-        <div className="form-group">
-          <label htmlFor="name">Member Name *</label>
-          <input
-            type="text"
-            id="name"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            placeholder="Enter member name"
-            required
-          />
+    <div className="member-form">
+      <h2>Add New Member</h2>
+      <form onSubmit={handleSubmit}>
+        <div className="form-grid">
+          <div className="form-group">
+            <label>Member Name *</label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="Enter member name"
+              className={errors.name ? 'error' : ''}
+            />
+            {errors.name && <span className="error-text">{errors.name}</span>}
+          </div>
+          
+          <div className="form-group">
+            <label>WhatsApp Number *</label>
+            <input
+              type="tel"
+              name="whatsapp"
+              value={formData.whatsapp}
+              onChange={handleChange}
+              placeholder="Enter WhatsApp number"
+              className={errors.whatsapp ? 'error' : ''}
+            />
+            {errors.whatsapp && <span className="error-text">{errors.whatsapp}</span>}
+          </div>
+          
+          <div className="form-group">
+            <label>Admission Date *</label>
+            <input
+              type="date"
+              name="admissionDate"
+              value={formData.admissionDate}
+              onChange={handleChange}
+              className={errors.admissionDate ? 'error' : ''}
+            />
+            {errors.admissionDate && <span className="error-text">{errors.admissionDate}</span>}
+          </div>
+          
+          <div className="form-group">
+            <label>Membership Type *</label>
+            <select
+              name="membershipType"
+              value={formData.membershipType}
+              onChange={handleChange}
+              className={errors.membershipType ? 'error' : ''}
+            >
+              <option value="">Select membership type</option>
+              <option value="Monthly">Monthly</option>
+              <option value="Quarterly">Quarterly (3 months)</option>
+              <option value="Half-Yearly">Half-Yearly (6 months)</option>
+              <option value="Yearly">Yearly</option>
+            </select>
+            {errors.membershipType && <span className="error-text">{errors.membershipType}</span>}
+          </div>
         </div>
-        <div className="form-group">
-          <label htmlFor="whatsapp">WhatsApp Number *</label>
-          <input
-            type="tel"
-            id="whatsapp"
-            name="whatsapp"
-            value={formData.whatsapp}
-            onChange={handleChange}
-            placeholder="Enter WhatsApp number"
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="admissionDate">Admission Date *</label>
-          <input
-            type="date"
-            id="admissionDate"
-            name="admissionDate"
-            value={formData.admissionDate}
-            onChange={handleChange}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="membershipType">Membership Type *</label>
-          <select
-            id="membershipType"
-            name="membershipType"
-            value={formData.membershipType}
-            onChange={handleChange}
-            required
-          >
-            <option value="">Select membership type</option>
-            <option value="Monthly">Monthly</option>
-            <option value="Quarterly">Quarterly (3 months)</option>
-            <option value="Half-Yearly">Half-Yearly (6 months)</option>
-            <option value="Yearly">Yearly</option>
-          </select>
-        </div>
-        <div className="form-group">
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Adding...' : 'Add Member'}
+        
+        <div className="form-actions">
+          <button type="submit" disabled={loading} className="btn-primary">
+            {loading ? (
+              <>
+                <span className="spinner"></span>
+                Adding...
+              </>
+            ) : (
+              'Add Member'
+            )}
           </button>
         </div>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 };
 
@@ -138,101 +266,191 @@ const SearchFilter = ({
   setSearchTerm, 
   statusFilter, 
   setStatusFilter, 
-  onClearFilters 
+  onClearFilters,
+  onUpdateOverdue,
+  onShowToast
 }) => {
+  const [updating, setUpdating] = useState(false);
+
+  const handleUpdateOverdue = async () => {
+    setUpdating(true);
+    try {
+      const result = await apiService.updateOverdueMembers();
+      onShowToast(`Updated ${result.modifiedCount} overdue members`, 'success');
+      onUpdateOverdue();
+    } catch (error) {
+      onShowToast(`Failed to update overdue members: ${error.message}`, 'error');
+    }
+    setUpdating(false);
+  };
+
   return (
     <div className="search-filter">
-      <input
-        type="text"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        placeholder="🔍 Search members by name or WhatsApp..."
-      />
-      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-        <option value="">All Members</option>
-        <option value="paid">Paid Only</option>
-        <option value="unpaid">Unpaid Only</option>
-      </select>
-      <button type="button" className="btn btn-secondary" onClick={onClearFilters}>
-        Clear Filters
-      </button>
+      <div className="filter-controls">
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="🔍 Search members by name or WhatsApp..."
+            className="search-input"
+          />
+        </div>
+        
+        <select 
+          value={statusFilter} 
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="status-filter"
+        >
+          <option value="">All Members</option>
+          <option value="paid">Paid Only</option>
+          <option value="unpaid">Unpaid Only</option>
+        </select>
+        
+        <button 
+          type="button" 
+          onClick={onClearFilters}
+          className="btn-secondary"
+        >
+          Clear Filters
+        </button>
+        
+        <button 
+          type="button" 
+          onClick={handleUpdateOverdue}
+          className="btn-warning"
+          disabled={updating}
+        >
+          {updating ? (
+            <>
+              <span className="spinner"></span>
+              Checking...
+            </>
+          ) : (
+            'Check Overdue'
+          )}
+        </button>
+      </div>
     </div>
   );
 };
 
 // Member Card Component
 const MemberCard = ({ member, onEdit, onDelete, onUpdateFeeStatus }) => {
+  const [updating, setUpdating] = useState(false);
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-GB');
   };
 
-  const handleFeeStatusChange = (e) => {
-    onUpdateFeeStatus(member.id, e.target.value);
+  const handleFeeStatusChange = async (e) => {
+    const newStatus = e.target.value;
+    setUpdating(true);
+    try {
+      await onUpdateFeeStatus(member._id, newStatus);
+    } catch (error) {
+      console.error('Failed to update fee status:', error);
+    }
+    setUpdating(false);
   };
 
+  const isOverdue = new Date(member.nextPaymentDue) < new Date() && member.feeStatus === 'paid';
+  const daysUntilDue = Math.ceil((new Date(member.nextPaymentDue) - new Date()) / (1000 * 60 * 60 * 24));
+
   return (
-    <div className={`member-card ${member.feeStatus}`}>
-      <div className="member-info">
+    <div className={`member-card ${member.feeStatus} ${isOverdue ? 'overdue' : ''}`}>
+      <div className="member-header">
         <h3>{member.name}</h3>
-        <div className="member-detail">
-          <span><strong>WhatsApp:</strong></span>
-          <span>{member.whatsapp}</span>
-        </div>
-        <div className="member-detail">
-          <span><strong>Admission Date:</strong></span>
-          <span>{formatDate(member.admissionDate)}</span>
-        </div>
-        <div className="member-detail">
-          <span><strong>Membership:</strong></span>
-          <span>{member.membershipType}</span>
-        </div>
-        {member.nextPaymentDue && (
-          <div className="member-detail">
-            <span><strong>Next Payment Due:</strong></span>
-            <span>{formatDate(member.nextPaymentDue)}</span>
-          </div>
-        )}
-      </div>
-      <div className="fee-status">
-        <span className={`status-badge status-${member.feeStatus}`}>
+        <span className={`status-badge ${member.feeStatus}`}>
           {member.feeStatus.toUpperCase()}
         </span>
+      </div>
+      
+      <div className="member-details">
+        <div className="detail-row">
+          <span className="label">📱 WhatsApp:</span>
+          <span className="value">{member.whatsapp}</span>
+        </div>
+        <div className="detail-row">
+          <span className="label">📅 Admission:</span>
+          <span className="value">{formatDate(member.admissionDate)}</span>
+        </div>
+        <div className="detail-row">
+          <span className="label">🎯 Membership:</span>
+          <span className="value">{member.membershipType}</span>
+        </div>
+        <div className="detail-row">
+          <span className="label">💳 Next Due:</span>
+          <span className={`value ${isOverdue ? 'overdue-date' : daysUntilDue <= 3 ? 'warning-date' : ''}`}>
+            {formatDate(member.nextPaymentDue)}
+            {daysUntilDue > 0 && daysUntilDue <= 7 && (
+              <small className="days-remaining">({daysUntilDue} days)</small>
+            )}
+          </span>
+        </div>
+      </div>
+
+      <div className="member-actions">
         <select 
           value={member.feeStatus} 
           onChange={handleFeeStatusChange}
-          className="fee-status-select"
+          className="status-select"
+          disabled={updating}
         >
           <option value="paid">Paid</option>
           <option value="unpaid">Unpaid</option>
         </select>
-      </div>
-      <div className="member-actions">
-        <button className="btn btn-primary" onClick={() => onEdit(member)}>
-          Edit
-        </button>
-        <button className="btn btn-danger" onClick={() => onDelete(member.id)}>
-          Delete
-        </button>
+        
+        <div className="action-buttons">
+          <button 
+            onClick={() => onEdit(member)}
+            className="btn-edit"
+            title="Edit member"
+          >
+            ✏️
+          </button>
+          <button 
+            onClick={() => onDelete(member._id)}
+            className="btn-delete"
+            title="Delete member"
+          >
+            🗑️
+          </button>
+        </div>
       </div>
     </div>
   );
 };
 
 // Member List Component
-const MemberList = ({ members, onEditMember, onDeleteMember, onUpdateFeeStatus }) => {
+const MemberList = ({ members, loading, onEditMember, onDeleteMember, onUpdateFeeStatus }) => {
+  if (loading) {
+    return (
+      <div className="member-grid">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="member-card skeleton">
+            <div className="skeleton-content"></div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (members.length === 0) {
     return (
       <div className="no-members">
-        <p>No members found</p>
+        <div className="no-members-icon">👥</div>
+        <h3>No members found</h3>
+        <p>Add your first member to get started!</p>
       </div>
     );
   }
 
   return (
-    <div className="members-grid">
+    <div className="member-grid">
       {members.map(member => (
         <MemberCard
-          key={member.id}
+          key={member._id}
           member={member}
           onEdit={onEditMember}
           onDelete={onDeleteMember}
@@ -244,7 +462,7 @@ const MemberList = ({ members, onEditMember, onDeleteMember, onUpdateFeeStatus }
 };
 
 // Edit Modal Component
-const EditModal = ({ member, onUpdateMember, onClose }) => {
+const EditModal = ({ member, onUpdateMember, onClose, onShowToast }) => {
   const [formData, setFormData] = useState({
     name: '',
     whatsapp: '',
@@ -252,111 +470,143 @@ const EditModal = ({ member, onUpdateMember, onClose }) => {
     membershipType: ''
   });
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     if (member) {
       setFormData({
         name: member.name,
         whatsapp: member.whatsapp,
-        admissionDate: member.admissionDate,
+        admissionDate: member.admissionDate.split('T')[0],
         membershipType: member.membershipType
       });
     }
   }, [member]);
 
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.name.trim()) newErrors.name = 'Name is required';
+    if (!formData.whatsapp.trim()) newErrors.whatsapp = 'WhatsApp number is required';
+    if (!formData.admissionDate) newErrors.admissionDate = 'Admission date is required';
+    if (!formData.membershipType) newErrors.membershipType = 'Membership type is required';
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.whatsapp || !formData.admissionDate || !formData.membershipType) {
-      alert('Please fill in all required fields');
-      return;
-    }
+    if (!validateForm()) return;
 
     setLoading(true);
-    const result = await onUpdateMember(member.id, formData);
-    
-    if (result.success) {
+    try {
+      await onUpdateMember(member._id, formData);
+      onShowToast('Member updated successfully!', 'success');
       onClose();
-    } else {
-      alert('Failed to update member: ' + result.error);
+    } catch (error) {
+      onShowToast(`Failed to update member: ${error.message}`, 'error');
     }
-    
     setLoading(false);
   };
 
-  const handleOverlayClick = (e) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
   return (
-    <div className="modal" onClick={handleOverlayClick}>
+    <div className="modal-overlay">
       <div className="modal-content">
-        <span className="close" onClick={onClose}>&times;</span>
-        <h2>Edit Member</h2>
-        <form onSubmit={handleSubmit}>
-          <div className="form-section">
-            <div className="form-group">
-              <label htmlFor="editName">Member Name *</label>
-              <input
-                type="text"
-                id="editName"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="editWhatsapp">WhatsApp Number *</label>
-              <input
-                type="tel"
-                id="editWhatsapp"
-                name="whatsapp"
-                value={formData.whatsapp}
-                onChange={handleChange}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="editAdmissionDate">Admission Date *</label>
-              <input
-                type="date"
-                id="editAdmissionDate"
-                name="admissionDate"
-                value={formData.admissionDate}
-                onChange={handleChange}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="editMembershipType">Membership Type *</label>
-              <select
-                id="editMembershipType"
-                name="membershipType"
-                value={formData.membershipType}
-                onChange={handleChange}
-                required
-              >
-                <option value="Monthly">Monthly</option>
-                <option value="Quarterly">Quarterly (3 months)</option>
-                <option value="Half-Yearly">Half-Yearly (6 months)</option>
-                <option value="Yearly">Yearly</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <button type="submit" className="btn btn-success" disabled={loading}>
-                {loading ? 'Updating...' : 'Update Member'}
-              </button>
-            </div>
+        <div className="modal-header">
+          <h2>Edit Member</h2>
+          <button 
+            onClick={onClose}
+            className="close-button"
+          >
+            ×
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="modal-form">
+          <div className="form-group">
+            <label>Member Name *</label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              className={errors.name ? 'error' : ''}
+            />
+            {errors.name && <span className="error-text">{errors.name}</span>}
+          </div>
+          
+          <div className="form-group">
+            <label>WhatsApp Number *</label>
+            <input
+              type="tel"
+              name="whatsapp"
+              value={formData.whatsapp}
+              onChange={handleChange}
+              className={errors.whatsapp ? 'error' : ''}
+            />
+            {errors.whatsapp && <span className="error-text">{errors.whatsapp}</span>}
+          </div>
+          
+          <div className="form-group">
+            <label>Admission Date *</label>
+            <input
+              type="date"
+              name="admissionDate"
+              value={formData.admissionDate}
+              onChange={handleChange}
+              className={errors.admissionDate ? 'error' : ''}
+            />
+            {errors.admissionDate && <span className="error-text">{errors.admissionDate}</span>}
+          </div>
+          
+          <div className="form-group">
+            <label>Membership Type *</label>
+            <select
+              name="membershipType"
+              value={formData.membershipType}
+              onChange={handleChange}
+              className={errors.membershipType ? 'error' : ''}
+            >
+              <option value="Monthly">Monthly</option>
+              <option value="Quarterly">Quarterly (3 months)</option>
+              <option value="Half-Yearly">Half-Yearly (6 months)</option>
+              <option value="Yearly">Yearly</option>
+            </select>
+            {errors.membershipType && <span className="error-text">{errors.membershipType}</span>}
+          </div>
+          
+          <div className="modal-actions">
+            <button 
+              type="submit" 
+              className="btn-primary"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <span className="spinner"></span>
+                  Updating...
+                </>
+              ) : (
+                'Update Member'
+              )}
+            </button>
+            <button 
+              type="button" 
+              onClick={onClose}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
           </div>
         </form>
       </div>
@@ -367,143 +617,111 @@ const EditModal = ({ member, onUpdateMember, onClose }) => {
 // Main App Component
 const Gym = () => {
   const [members, setMembers] = useState([]);
+  const [stats, setStats] = useState({});
   const [filteredMembers, setFilteredMembers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [editingMember, setEditingMember] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
 
-  // Calculate next payment due date
-  const calculateNextPaymentDue = (admissionDate, membershipType) => {
-    const date = new Date(admissionDate);
-    switch (membershipType) {
-      case 'Monthly':
-        date.setMonth(date.getMonth() + 1);
-        break;
-      case 'Quarterly':
-        date.setMonth(date.getMonth() + 3);
-        break;
-      case 'Half-Yearly':
-        date.setMonth(date.getMonth() + 6);
-        break;
-      case 'Yearly':
-        date.setFullYear(date.getFullYear() + 1);
-        break;
-      default:
-        date.setMonth(date.getMonth() + 1);
-    }
-    return date.toISOString().split('T')[0];
-  };
-
-  // Auto-update fee status based on payment due date
-  const updateFeeStatuses = () => {
-    const today = new Date().toISOString().split('T')[0];
-    setMembers(prev => prev.map(member => {
-      if (member.nextPaymentDue && member.nextPaymentDue < today && member.feeStatus === 'paid') {
-        return { ...member, feeStatus: 'unpaid' };
-      }
-      return member;
-    }));
-  };
-
-  // Load initial data and set up auto-update
-  useEffect(() => {
-    // Load sample data
-    const sampleMembers = [
-      {
-        id: 1,
-        name: 'John Doe',
-        whatsapp: '+91 9876543210',
-        admissionDate: '2024-01-15',
-        membershipType: 'Monthly',
-        feeStatus: 'paid',
-        nextPaymentDue: calculateNextPaymentDue('2024-01-15', 'Monthly')
-      },
-      {
-        id: 2,
-        name: 'Jane Smith',
-        whatsapp: '+91 9876543211',
-        admissionDate: '2024-02-01',
-        membershipType: 'Quarterly',
-        feeStatus: 'unpaid',
-        nextPaymentDue: calculateNextPaymentDue('2024-02-01', 'Quarterly')
-      }
-    ];
-    
-    setMembers(sampleMembers);
-    
-    // Set up interval to check fee statuses
-    const interval = setInterval(updateFeeStatuses, 60000); // Check every minute
-    return () => clearInterval(interval);
+  // Show toast notification
+  const showToast = useCallback((message, type = 'info') => {
+    setToast({ message, type });
   }, []);
 
-  // Filter members based on search and status
+  // Load members from API
+  const loadMembers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = {};
+      if (searchTerm) params.search = searchTerm;
+      if (statusFilter) params.status = statusFilter;
+      
+      const data = await apiService.getMembers(params);
+      setMembers(data.members || data); // Handle both paginated and simple response
+      setError('');
+    } catch (err) {
+      setError('Failed to load members: ' + err.message);
+      setMembers([]);
+      showToast('Failed to load members', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [searchTerm, statusFilter, showToast]);
+
+  // Load statistics
+  const loadStats = useCallback(async () => {
+    try {
+      setStatsLoading(true);
+      const data = await apiService.getStats();
+      setStats(data);
+    } catch (err) {
+      console.error('Failed to load stats:', err);
+      setStats({});
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadMembers();
+    loadStats();
+  }, [loadMembers, loadStats]);
+
+  // Filter members locally for immediate response
   useEffect(() => {
     const filtered = members.filter(member => {
-      const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            member.whatsapp.includes(searchTerm);
+      const matchesSearch = !searchTerm || 
+        member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        member.whatsapp.includes(searchTerm);
       const matchesStatus = !statusFilter || member.feeStatus === statusFilter;
       return matchesSearch && matchesStatus;
     });
     setFilteredMembers(filtered);
   }, [members, searchTerm, statusFilter]);
 
-  // Add new member
-  const addMember = async (memberData) => {
-    try {
-      const newMember = {
-        id: Date.now(), // Simple ID generation
-        ...memberData,
-        feeStatus: 'paid', // New members start as paid
-        nextPaymentDue: calculateNextPaymentDue(memberData.admissionDate, memberData.membershipType)
-      };
-      
-      setMembers(prev => [...prev, newMember]);
-      return { success: true };
-    } catch (err) {
-      setError('Failed to add member: ' + err.message);
-      return { success: false, error: err.message };
-    }
-  };
+  // Refresh data
+  const refreshData = useCallback(() => {
+    loadMembers();
+    loadStats();
+  }, [loadMembers, loadStats]);
 
   // Update member
   const updateMember = async (id, memberData) => {
     try {
-      const updatedMember = {
-        ...memberData,
-        id,
-        nextPaymentDue: calculateNextPaymentDue(memberData.admissionDate, memberData.membershipType)
-      };
-      
-      setMembers(prev => prev.map(m => m.id === id ? { ...m, ...updatedMember } : m));
-      setEditingMember(null);
-      return { success: true };
-    } catch (err) {
-      setError('Failed to update member: ' + err.message);
-      return { success: false, error: err.message };
+      await apiService.updateMember(id, memberData);
+      refreshData();
+    } catch (error) {
+      throw error;
     }
   };
 
   // Delete member
   const deleteMember = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this member?')) return;
-    
-    try {
-      setMembers(prev => prev.filter(m => m.id !== id));
-    } catch (err) {
-      setError('Failed to delete member: ' + err.message);
+    if (window.confirm('Are you sure you want to delete this member?')) {
+      try {
+        await apiService.deleteMember(id);
+        refreshData();
+        showToast('Member deleted successfully', 'success');
+      } catch (error) {
+        showToast('Failed to delete member: ' + error.message, 'error');
+      }
     }
   };
 
   // Update fee status
-  const updateFeeStatus = async (id, newStatus) => {
+  const updateFeeStatus = async (id, feeStatus) => {
     try {
-      setMembers(prev => prev.map(m => 
-        m.id === id ? { ...m, feeStatus: newStatus } : m
-      ));
-    } catch (err) {
-      setError('Failed to update fee status: ' + err.message);
+      await apiService.updateFeeStatus(id, feeStatus);
+      refreshData();
+      showToast(`Fee status updated to ${feeStatus}`, 'success');
+    } catch (error) {
+      showToast('Failed to update fee status: ' + error.message, 'error');
+      throw error;
     }
   };
 
@@ -513,43 +731,81 @@ const Gym = () => {
     setStatusFilter('');
   };
 
-if (loading) {
-  return (
-    <div className="loading-container">
-      <div className="loading-spinner"></div>
-      <p>Loading members...</p>
-    </div>
-  );
-}
+  if (error && !members.length) {
+    return (
+      <div className="gym-app">
+        <div className="error-container">
+          <div className="error-icon">⚠️</div>
+          <h2>Connection Error</h2>
+          <p>{error}</p>
+          <button onClick={refreshData} className="btn-primary">
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="gym-container">
-      <h1>Gym Member Management</h1>
+    <div className="gym-app">
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
+        />
+      )}
 
-      <Statistics members={members} />
+      <header className="app-header">
+        <div className="header-content">
+          <h1>💪 Gym Management System</h1>
+          <p>Manage your gym members efficiently</p>
+        </div>
+      </header>
 
-      <SearchFilter 
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        onClearFilters={clearFilters}
-      />
-
-      <MemberForm onAddMember={addMember} />
-
-      <MemberList 
-        members={filteredMembers}
-        onEditMember={setEditingMember}
-        onDeleteMember={deleteMember}
-        onUpdateFeeStatus={updateFeeStatus}
-      />
+      <main className="app-main">
+        <Statistics stats={stats} loading={statsLoading} />
+        
+        <MemberForm onRefresh={refreshData} onShowToast={showToast} />
+        
+        <SearchFilter
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          onClearFilters={clearFilters}
+          onUpdateOverdue={refreshData}
+          onShowToast={showToast}
+        />
+        
+        <div className="members-section">
+          <div className="section-header">
+            <h2>Members ({filteredMembers.length})</h2>
+            <button 
+              onClick={refreshData} 
+              className="btn-refresh"
+              title="Refresh data"
+            >
+              🔄
+            </button>
+          </div>
+          
+          <MemberList
+            members={filteredMembers}
+            loading={loading}
+            onEditMember={setEditingMember}
+            onDeleteMember={deleteMember}
+            onUpdateFeeStatus={updateFeeStatus}
+          />
+        </div>
+      </main>
 
       {editingMember && (
-        <EditModal 
+        <EditModal
           member={editingMember}
           onUpdateMember={updateMember}
           onClose={() => setEditingMember(null)}
+          onShowToast={showToast}
         />
       )}
     </div>
